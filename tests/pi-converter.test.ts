@@ -8,7 +8,15 @@ import { parseFrontmatter } from "../src/utils/frontmatter"
 import type { ClaudePlugin } from "../src/types/claude"
 
 const chainTaskReconstruction =
-  "{ agent: step.agent, task: resolvedTask, cwd: step.cwd, model: step.model }"
+  "{ agent: step.agent, task: resolvedTask, cwd: step.cwd, model: step.model ?? params.model }"
+
+const singleModeTaskReconstruction =
+  "{ agent: params.agent!, task: params.task!, cwd: params.cwd, model: params.model }"
+
+const parallelModelFallback = "model: task.model ?? params.model"
+
+const modelFlagAssembly =
+  'const model = typeof task.model === "string" ? task.model.trim() : ""\n  const modelFlag = model ? " --model " + shellEscape(model) : ""'
 
 const fixtureRoot = path.join(import.meta.dir, "fixtures", "sample-plugin")
 
@@ -124,18 +132,23 @@ describe("convertClaudeToPi", () => {
     expect(parsedPrompt.body).toContain("mcporter_call")
   })
 
-  test("preserves per-step model overrides in chained subagent reconstruction", () => {
-    // Chain mode rebuilds each step for {previous} substitution; model must survive that rebuild
-    // so steps with different models (e.g. haiku then sonnet) each get pi --model.
-    expect(PI_COMPAT_EXTENSION_SOURCE).toContain(chainTaskReconstruction)
-    expect(PI_COMPAT_EXTENSION_SOURCE).toContain('task.model ? " --model "')
+  test("preserves model overrides across single, parallel, and chain modes", () => {
+    // Chain rebuilds each step for {previous}; parallel inherits root model when a step omits it;
+    // single mode passes params.model; whitespace-only models must not inject --model.
+    const sources = [
+      PI_COMPAT_EXTENSION_SOURCE,
+      fs.readFileSync(
+        path.join(import.meta.dir, "..", "extensions", "compound-engineering-compat.ts"),
+        "utf8",
+      ),
+    ]
 
-    const liveExtension = fs.readFileSync(
-      path.join(import.meta.dir, "..", "extensions", "compound-engineering-compat.ts"),
-      "utf8",
-    )
-    expect(liveExtension).toContain(chainTaskReconstruction)
-    expect(liveExtension).toContain('task.model ? " --model "')
+    for (const source of sources) {
+      expect(source).toContain(chainTaskReconstruction)
+      expect(source).toContain(singleModeTaskReconstruction)
+      expect(source).toContain(parallelModelFallback)
+      expect(source).toContain(modelFlagAssembly)
+    }
 
     const bundle = convertClaudeToPi(
       {
@@ -151,5 +164,8 @@ describe("convertClaudeToPi", () => {
     )
     const compatExtension = bundle.extensions.find((extension) => extension.name === "compound-engineering-compat.ts")
     expect(compatExtension?.content).toContain(chainTaskReconstruction)
+    expect(compatExtension?.content).toContain(singleModeTaskReconstruction)
+    expect(compatExtension?.content).toContain(parallelModelFallback)
+    expect(compatExtension?.content).toContain(modelFlagAssembly)
   })
 })

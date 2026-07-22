@@ -129,7 +129,8 @@ async function runSingleSubagent(
   }
 
   const cwd = resolveTaskCwd(baseCwd, task.cwd)
-  const modelFlag = task.model ? " --model " + shellEscape(task.model) : ""
+  const model = typeof task.model === "string" ? task.model.trim() : ""
+  const modelFlag = model ? " --model " + shellEscape(model) : ""
   const prompt = "/skill:" + agent + " " + taskText
   const script = "cd " + shellEscape(cwd) + " && pi --no-session" + modelFlag + " -p " + shellEscape(prompt)
   const result = await pi.exec("bash", ["-lc", script], { signal, timeout: timeoutMs })
@@ -315,7 +316,7 @@ export default function (pi: ExtensionAPI) {
       task: Type.Optional(Type.String({ description: "Single subagent task" })),
       cwd: Type.Optional(Type.String({ description: "Working directory for single mode" })),
       model: Type.Optional(Type.String({
-        description: 'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use Pi session default.'
+        description: 'Optional model override for single mode, or default for tasks/chain entries that omit model. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use Pi session default.'
       })),
       tasks: Type.Optional(Type.Array(subagentTaskSchema, { description: "Parallel subagent tasks" })),
       chain: Type.Optional(Type.Array(subagentTaskSchema, { description: "Sequential tasks; supports {previous} placeholder" })),
@@ -359,7 +360,10 @@ export default function (pi: ExtensionAPI) {
         }
 
         if (hasTasks) {
-          const tasks = params.tasks as SubagentTask[]
+          const tasks = (params.tasks as SubagentTask[]).map((task) => ({
+            ...task,
+            model: task.model ?? params.model,
+          }))
           const maxConcurrency = Number(params.maxConcurrency || 4)
 
           const results = await runParallelSubagents(
@@ -396,7 +400,7 @@ export default function (pi: ExtensionAPI) {
           const result = await runSingleSubagent(
             pi,
             ctx.cwd,
-            { agent: step.agent, task: resolvedTask, cwd: step.cwd, model: step.model },
+            { agent: step.agent, task: resolvedTask, cwd: step.cwd, model: step.model ?? params.model },
             signal,
             timeoutMs,
           )
