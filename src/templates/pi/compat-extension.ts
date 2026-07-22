@@ -393,7 +393,7 @@ export default function (pi: ExtensionAPI) {
           const result = await runSingleSubagent(
             pi,
             ctx.cwd,
-            { agent: step.agent, task: resolvedTask, cwd: step.cwd },
+            { agent: step.agent, task: resolvedTask, cwd: step.cwd, model: step.model },
             signal,
             timeoutMs,
           )

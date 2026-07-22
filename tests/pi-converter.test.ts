@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test"
+import fs from "node:fs"
 import path from "path"
 import { loadClaudePlugin } from "../src/parsers/claude"
 import { convertClaudeToPi } from "../src/converters/claude-to-pi"
+import { PI_COMPAT_EXTENSION_SOURCE } from "../src/templates/pi/compat-extension"
 import { parseFrontmatter } from "../src/utils/frontmatter"
 import type { ClaudePlugin } from "../src/types/claude"
+
+const chainTaskReconstruction =
+  "{ agent: step.agent, task: resolvedTask, cwd: step.cwd, model: step.model }"
 
 const fixtureRoot = path.join(import.meta.dir, "fixtures", "sample-plugin")
 
@@ -117,5 +122,34 @@ describe("convertClaudeToPi", () => {
     const parsedPrompt = parseFrontmatter(bundle.prompts[0].content)
     expect(parsedPrompt.body).toContain("Pi + MCPorter note")
     expect(parsedPrompt.body).toContain("mcporter_call")
+  })
+
+  test("preserves per-step model overrides in chained subagent reconstruction", () => {
+    // Chain mode rebuilds each step for {previous} substitution; model must survive that rebuild
+    // so steps with different models (e.g. haiku then sonnet) each get pi --model.
+    expect(PI_COMPAT_EXTENSION_SOURCE).toContain(chainTaskReconstruction)
+    expect(PI_COMPAT_EXTENSION_SOURCE).toContain('task.model ? " --model "')
+
+    const liveExtension = fs.readFileSync(
+      path.join(import.meta.dir, "..", "extensions", "compound-engineering-compat.ts"),
+      "utf8",
+    )
+    expect(liveExtension).toContain(chainTaskReconstruction)
+    expect(liveExtension).toContain('task.model ? " --model "')
+
+    const bundle = convertClaudeToPi(
+      {
+        root: "/tmp/plugin",
+        manifest: { name: "fixture", version: "1.0.0" },
+        agents: [],
+        commands: [],
+        skills: [],
+        hooks: undefined,
+        mcpServers: undefined,
+      },
+      { agentMode: "subagent", inferTemperature: false, permissions: "none" },
+    )
+    const compatExtension = bundle.extensions.find((extension) => extension.name === "compound-engineering-compat.ts")
+    expect(compatExtension?.content).toContain(chainTaskReconstruction)
   })
 })
