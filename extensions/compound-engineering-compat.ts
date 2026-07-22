@@ -314,6 +314,9 @@ export default function (pi: ExtensionAPI) {
       agent: Type.Optional(Type.String({ description: "Single subagent name" })),
       task: Type.Optional(Type.String({ description: "Single subagent task" })),
       cwd: Type.Optional(Type.String({ description: "Working directory for single mode" })),
+      model: Type.Optional(Type.String({
+        description: 'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use Pi session default.'
+      })),
       tasks: Type.Optional(Type.Array(subagentTaskSchema, { description: "Parallel subagent tasks" })),
       chain: Type.Optional(Type.Array(subagentTaskSchema, { description: "Sequential tasks; supports {previous} placeholder" })),
       maxConcurrency: Type.Optional(Type.Number({ default: 4 })),
@@ -342,7 +345,7 @@ export default function (pi: ExtensionAPI) {
           const result = await runSingleSubagent(
             pi,
             ctx.cwd,
-            { agent: params.agent!, task: params.task!, cwd: params.cwd },
+            { agent: params.agent!, task: params.task!, cwd: params.cwd, model: params.model },
             signal,
             timeoutMs,
           )
