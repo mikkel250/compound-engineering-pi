@@ -13,6 +13,7 @@ type SubagentTask = {
   agent: string
   task: string
   cwd?: string
+  model?: string
 }
 
 type SubagentResult = {
@@ -128,8 +129,9 @@ async function runSingleSubagent(
   }
 
   const cwd = resolveTaskCwd(baseCwd, task.cwd)
+  const modelFlag = task.model ? " --model " + shellEscape(task.model) : ""
   const prompt = "/skill:" + agent + " " + taskText
-  const script = "cd " + shellEscape(cwd) + " && pi --no-session -p " + shellEscape(prompt)
+  const script = "cd " + shellEscape(cwd) + " && pi --no-session" + modelFlag + " -p " + shellEscape(prompt)
   const result = await pi.exec("bash", ["-lc", script], { signal, timeout: timeoutMs })
 
   return {
@@ -296,6 +298,9 @@ export default function (pi: ExtensionAPI) {
     agent: Type.String({ description: "Skill/agent name to invoke" }),
     task: Type.String({ description: "Task instructions for that skill" }),
     cwd: Type.Optional(Type.String({ description: "Optional working directory for this task" })),
+    model: Type.Optional(Type.String({
+      description: 'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use Pi session default.'
+    })),
   })
 
   if (isPackageConfigured("pi-subagents")) {
